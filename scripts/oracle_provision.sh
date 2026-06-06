@@ -2,39 +2,46 @@
 # CriacBot — full Oracle Cloud provisioning via OCI CLI
 #
 # Run this in OCI Cloud Shell (Oracle Console top-right ">_" icon).
-# It creates all networking, firewall rules, and the ARM instance,
-# trying each availability domain automatically until one has capacity.
 #
 # Usage:
-#   bash oracle_provision.sh
-#
-# If all ADs are at capacity it exits cleanly — the networking is saved.
-# Run again later with:  bash oracle_provision.sh --instance-only
+#   bash oracle_provision.sh           # ARM A1.Flex (fast, 12GB) — may hit capacity
+#   bash oracle_provision.sh --amd     # AMD E2.1.Micro (1GB, always available)
+#   bash oracle_provision.sh --instance-only        # retry instance, reuse networking
+#   bash oracle_provision.sh --amd --instance-only  # AMD retry only
 set -euo pipefail
 
 COMPARTMENT="$OCI_TENANCY"
-SHAPE="VM.Standard.A1.Flex"
-OCPUS=2
-MEMORY_GB=12
 NAME="criacbot"
 UBUNTU_VERSION="22.04"
 
-INSTANCE_ONLY="${1:-}"
+# ── parse flags ───────────────────────────────────────────────────────────────
 
-# ── helpers ──────────────────────────────────────────────────────────────────
+USE_AMD=false
+INSTANCE_ONLY=false
+for arg in "$@"; do
+  case $arg in
+    --amd)           USE_AMD=true ;;
+    --instance-only) INSTANCE_ONLY=true ;;
+  esac
+done
+
+if $USE_AMD; then
+  SHAPE="VM.Standard.E2.1.Micro"
+  SHAPE_CONFIG=""   # fixed shape, no config needed
+  echo "==> Using AMD E2.1.Micro (always-free, guaranteed capacity)"
+else
+  SHAPE="VM.Standard.A1.Flex"
+  SHAPE_CONFIG='{"ocpus":2,"memoryInGBs":12}'
+  echo "==> Using ARM A1.Flex (2 OCPU / 12 GB)"
+fi
+
+# ── helpers ───────────────────────────────────────────────────────────────────
 
 log()  { echo "==> $*"; }
 info() { echo "    $*"; }
 ok()   { echo "    OK: $*"; }
 
-get_ids() {
-  # Query OCI CLI output for a list of values
-  python3 -c "import sys,json; [print(x) for x in json.load(sys.stdin)]"
-}
-
-get_id() {
-  python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])"
-}
+get_ids() { python3 -c "import sys,json; [print(x) for x in json.load(sys.stdin)]"; }
 
 # ── SSH key ───────────────────────────────────────────────────────────────────
 
@@ -45,14 +52,13 @@ if [ ! -f ~/.ssh/id_rsa ]; then
 else
   info "Using existing key at ~/.ssh/id_rsa"
 fi
-SSH_KEY=$(cat ~/.ssh/id_rsa.pub)
 SSH_KEY_FILE=$(mktemp)
-echo "$SSH_KEY" > "$SSH_KEY_FILE"
+cat ~/.ssh/id_rsa.pub > "$SSH_KEY_FILE"
 trap "rm -f $SSH_KEY_FILE" EXIT
 
 # ── networking (skip if --instance-only) ─────────────────────────────────────
 
-if [ "$INSTANCE_ONLY" != "--instance-only" ]; then
+if ! $INSTANCE_ONLY; then
 
   log "Creating VCN"
   VCN_ID=$(oci network vcn create \
@@ -107,27 +113,19 @@ if [ "$INSTANCE_ONLY" != "--instance-only" ]; then
     --query 'data.id' --raw-output 2>/dev/null)
   ok "$SUBNET_ID"
 
-  # Save IDs so --instance-only can reuse them
-  cat > ~/.criacbot_ids << EOF
-VCN_ID=$VCN_ID
-SUBNET_ID=$SUBNET_ID
-EOF
+  printf "VCN_ID=%s\nSUBNET_ID=%s\n" "$VCN_ID" "$SUBNET_ID" > ~/.criacbot_ids
   info "Networking IDs saved to ~/.criacbot_ids"
 
 else
-  # Restore from previous run
-  if [ ! -f ~/.criacbot_ids ]; then
-    echo "ERROR: ~/.criacbot_ids not found. Run without --instance-only first."
-    exit 1
-  fi
+  [ -f ~/.criacbot_ids ] || { echo "ERROR: ~/.criacbot_ids not found — run without --instance-only first"; exit 1; }
   source ~/.criacbot_ids
   log "Reusing existing networking"
   info "Subnet: $SUBNET_ID"
 fi
 
-# ── find Ubuntu ARM image ─────────────────────────────────────────────────────
+# ── find Ubuntu image for chosen shape ───────────────────────────────────────
 
-log "Finding latest Ubuntu ${UBUNTU_VERSION} ARM image"
+log "Finding latest Ubuntu ${UBUNTU_VERSION} image for $SHAPE"
 IMAGE_ID=$(oci compute image list \
   --compartment-id "$COMPARTMENT" \
   --operating-system "Canonical Ubuntu" \
@@ -147,29 +145,30 @@ mapfile -t ADS < <(oci iam availability-domain list \
   --query 'data[*].name' | get_ids)
 
 INSTANCE_ID=""
-PUBLIC_IP=""
 
 for AD in "${ADS[@]}"; do
   info "Trying $AD ..."
 
+  LAUNCH_ARGS=(
+    --availability-domain "$AD"
+    --compartment-id "$COMPARTMENT"
+    --shape "$SHAPE"
+    --image-id "$IMAGE_ID"
+    --subnet-id "$SUBNET_ID"
+    --assign-public-ip true
+    --ssh-authorized-keys-file "$SSH_KEY_FILE"
+    --display-name "$NAME"
+  )
+  [ -n "$SHAPE_CONFIG" ] && LAUNCH_ARGS+=(--shape-config "$SHAPE_CONFIG")
+
   set +e
-  OUTPUT=$(oci compute instance launch \
-    --availability-domain "$AD" \
-    --compartment-id "$COMPARTMENT" \
-    --shape "$SHAPE" \
-    --shape-config "{\"ocpus\":$OCPUS,\"memoryInGBs\":$MEMORY_GB}" \
-    --image-id "$IMAGE_ID" \
-    --subnet-id "$SUBNET_ID" \
-    --assign-public-ip true \
-    --ssh-authorized-keys-file "$SSH_KEY_FILE" \
-    --display-name "$NAME" \
-    2>&1)
+  OUTPUT=$(oci compute instance launch "${LAUNCH_ARGS[@]}" 2>&1)
   EXIT=$?
   set -e
 
   if [ $EXIT -eq 0 ]; then
     INSTANCE_ID=$(echo "$OUTPUT" | python3 -c "import sys,json; print(json.load(sys.stdin)['data']['id'])")
-    info "Created in $AD"
+    info "Created in $AD!"
     break
   else
     info "No capacity in $AD — trying next"
@@ -179,16 +178,17 @@ done
 if [ -z "$INSTANCE_ID" ]; then
   echo ""
   echo "========================================"
-  echo "  All ADs at capacity right now."
-  echo "  Networking is saved. Try again later:"
+  echo "  All ADs at capacity."
+  echo "  Networking is saved. Retry with:"
   echo "  bash oracle_provision.sh --instance-only"
+  echo "  bash oracle_provision.sh --amd --instance-only"
   echo "========================================"
   exit 1
 fi
 
 # ── wait for RUNNING ──────────────────────────────────────────────────────────
 
-log "Waiting for instance to reach RUNNING state (~2 mins)"
+log "Waiting for instance to start (~2 mins)"
 oci compute instance get \
   --instance-id "$INSTANCE_ID" \
   --wait-for-state RUNNING \
@@ -198,6 +198,8 @@ log "Getting public IP"
 PUBLIC_IP=$(oci compute instance list-vnics \
   --instance-id "$INSTANCE_ID" \
   --query 'data[0]."public-ip"' --raw-output)
+
+printf "PUBLIC_IP=%s\nINSTANCE_ID=%s\n" "$PUBLIC_IP" "$INSTANCE_ID" >> ~/.criacbot_ids
 
 # ── done ─────────────────────────────────────────────────────────────────────
 
@@ -209,15 +211,10 @@ echo ""
 echo "  SSH in:"
 echo "    ssh -i ~/.ssh/id_rsa ubuntu@$PUBLIC_IP"
 echo ""
-echo "  Save your private key locally (run on YOUR machine):"
-echo "    # In Cloud Shell, print it:"
+echo "  Run setup on the server:"
+echo "    ssh ubuntu@$PUBLIC_IP 'bash <(curl -fsSL https://raw.githubusercontent.com/DRourke-87/Criac/main/scripts/setup.sh)'"
+echo ""
+echo "  IMPORTANT — save your private key to your local machine:"
 echo "    cat ~/.ssh/id_rsa"
-echo "    # Copy the output and save as criacbot.pem on your machine"
+echo "    (copy the output and save it as criacbot.pem)"
 echo ""
-echo "  Next step: copy secrets and run setup"
-echo "    (see README / setup instructions)"
-echo ""
-
-# Save public IP for reference
-echo "PUBLIC_IP=$PUBLIC_IP" >> ~/.criacbot_ids
-echo "INSTANCE_ID=$INSTANCE_ID" >> ~/.criacbot_ids
