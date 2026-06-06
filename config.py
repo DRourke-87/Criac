@@ -17,8 +17,8 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 TRANSCRIBE_MODEL = "whisper-large-v3-turbo"
 
 _REQUIRED = (
-    "DISCORD_BOT_TOKEN",
-    "DISCORD_ALLOWED_USER_ID",
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_ALLOWED_USER_ID",
     "GROQ_API_KEY",
     "CLAUDE_CODE_OAUTH_TOKEN",
     "NOTION_API_KEY",
@@ -26,6 +26,9 @@ _REQUIRED = (
     "NOTION_TASKS_DB_ID",
     "NOTION_DRAFTS_DB_ID",
 )
+
+# Optional — Google Calendar support is enabled only when GOOGLE_CALENDAR_ID is set.
+_OPTIONAL_GCAL = ("GOOGLE_CALENDAR_ID",)
 
 
 def _require(name: str) -> str:
@@ -43,13 +46,13 @@ def validate() -> None:
     for name in _REQUIRED:
         _require(name)
     # Surface a bad user id immediately rather than at first message.
-    int(_require("DISCORD_ALLOWED_USER_ID"))
+    int(_require("TELEGRAM_ALLOWED_USER_ID"))
 
 
 # Eagerly-resolved settings. Importing this module does not raise; call
 # validate() (from main.py) to fail fast before the bot starts.
-DISCORD_BOT_TOKEN = os.environ.get("DISCORD_BOT_TOKEN", "")
-DISCORD_ALLOWED_USER_ID = int(os.environ.get("DISCORD_ALLOWED_USER_ID", "0") or "0")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_ALLOWED_USER_ID = int(os.environ.get("TELEGRAM_ALLOWED_USER_ID", "0") or "0")
 GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 # Subscription auth for the Claude Agent SDK — from `claude setup-token` (a
 # Claude Pro/Max login). The SDK reads this env var directly; we surface it here
@@ -59,3 +62,7 @@ NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
 NOTION_NOTES_DB_ID = os.environ.get("NOTION_NOTES_DB_ID", "")
 NOTION_TASKS_DB_ID = os.environ.get("NOTION_TASKS_DB_ID", "")
 NOTION_DRAFTS_DB_ID = os.environ.get("NOTION_DRAFTS_DB_ID", "")
+
+# Google Calendar — optional. Leave blank to disable calendar tools.
+GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
+TIMEZONE = os.environ.get("TIMEZONE", "Europe/London")

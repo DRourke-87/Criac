@@ -4,3 +4,5 @@ __pycache__/
 .venv/
 venv/
 *.ogg
+token.json
+credentials.json

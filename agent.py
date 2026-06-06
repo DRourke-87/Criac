@@ -30,8 +30,9 @@ from claude_agent_sdk import (
 )
 
 import notion_client_wrapper as notion
+import google_calendar_wrapper as gcal
 
-_SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text()
+_SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
 # Serialises run() calls and holds the current message's state for the tools.
 _lock = asyncio.Lock()
@@ -140,10 +141,75 @@ async def search_notion(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": json.dumps(results)}]}
 
 
+@tool(
+    "get_upcoming_events",
+    "Check what is on the family Google Calendar. Use when the user asks what's "
+    "coming up, what's on this week, whether a date is free, or anything about "
+    "upcoming plans or family events.",
+    {
+        "type": "object",
+        "properties": {
+            "days_ahead": {
+                "type": "integer",
+                "description": "How many days ahead to look (default 7, max 30)",
+            },
+        },
+        "required": [],
+    },
+)
+async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    days = min(int(args.get("days_ahead", 7)), 30)
+    events = gcal.get_events(days_ahead=days)
+    if not events:
+        text = "No events found in that window."
+    else:
+        lines = [f"- {e['start']}: {e['title']}" + (f" @ {e['location']}" if e['location'] else "") for e in events]
+        text = "\n".join(lines)
+    return {"content": [{"type": "text", "text": text}]}
+
+
+@tool(
+    "create_calendar_event",
+    "Add an event to the family Google Calendar. Use when the user says they want "
+    "to add, schedule, or put something on the calendar. Always infer a sensible "
+    "end time (default 1 hour after start) if not stated.",
+    {
+        "type": "object",
+        "properties": {
+            "summary": {"type": "string", "description": "Event title"},
+            "start": {
+                "type": "string",
+                "description": "ISO 8601 date ('2026-06-10') or datetime ('2026-06-10T15:00:00')",
+            },
+            "end": {
+                "type": "string",
+                "description": "ISO 8601 date or datetime. For timed events default to start + 1 hour.",
+            },
+            "description": {"type": "string", "description": "Optional notes or details"},
+            "location": {"type": "string", "description": "Optional location"},
+        },
+        "required": ["summary", "start", "end"],
+    },
+)
+async def create_calendar_event(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    link = gcal.create_event(
+        summary=args["summary"],
+        start=args["start"],
+        end=args["end"],
+        description=args.get("description", ""),
+        location=args.get("location", ""),
+    )
+    _state["urls"].append(link)
+    return {"content": [{"type": "text", "text": f"Event created. Calendar link: {link}"}]}
+
+
 _server = create_sdk_mcp_server(
     name="notion",
     version="1.0.0",
-    tools=[create_note, create_task, create_draft, search_notion],
+    tools=[create_note, create_task, create_draft, search_notion,
+           get_upcoming_events, create_calendar_event],
 )
 
 _ALLOWED_TOOLS = [
@@ -151,6 +217,8 @@ _ALLOWED_TOOLS = [
     "mcp__notion__create_task",
     "mcp__notion__create_draft",
     "mcp__notion__search_notion",
+    "mcp__notion__get_upcoming_events",
+    "mcp__notion__create_calendar_event",
 ]
 
 # Belt-and-braces: keep Claude off the host. The only capabilities it has are the
