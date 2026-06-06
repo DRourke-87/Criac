@@ -1,0 +1,5 @@
+python-telegram-bot>=21,<23
+openai>=1.40
+anthropic>=0.40
+notion-client>=2.2
+python-dotenv>=1.0
