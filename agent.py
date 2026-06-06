@@ -151,7 +151,7 @@ async def search_notion(args: dict[str, Any]) -> dict[str, Any]:
         "properties": {
             "days_ahead": {
                 "type": "integer",
-                "description": "How many days ahead to look (default 7, max 30)",
+                "description": "How many days ahead to look (default 7, max 180)",
             },
         },
         "required": [],
@@ -159,7 +159,7 @@ async def search_notion(args: dict[str, Any]) -> dict[str, Any]:
 )
 async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
     _state["used"] = True
-    days = min(int(args.get("days_ahead", 7)), 30)
+    days = min(int(args.get("days_ahead", 7)), 180)
     events = gcal.get_events(days_ahead=days)
     if not events:
         text = "No events found in that window."
