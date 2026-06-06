@@ -1,4 +1,4 @@
-"""Entry point — validate config and start the Telegram bot (long polling)."""
+"""Entry point — validate config and start the Discord bot (gateway connection)."""
 
 from __future__ import annotations
 
@@ -14,9 +14,8 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     config.validate()
-    application = bot.build_application()
-    logging.getLogger(__name__).info("Starting bot (long polling)…")
-    application.run_polling()
+    logging.getLogger(__name__).info("Starting Discord bot…")
+    bot.run()
 
 
 if __name__ == "__main__":

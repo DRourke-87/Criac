@@ -1,5 +1,5 @@
-python-telegram-bot>=21,<23
+discord.py>=2.4
 openai>=1.40
-anthropic>=0.40
+claude-agent-sdk>=0.1
 notion-client>=2.2
 python-dotenv>=1.0

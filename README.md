@@ -1,42 +1,57 @@
 # Voice Agent — Personal Voice-to-Action Bot
 
-A personal Telegram agent: send a voice note or text, and it transcribes (Whisper via Groq's free API),
-classifies intent with Claude (`claude-sonnet-4-6`), and writes a **note**, **task**, or
-**draft** to Notion — or searches your existing Notion content. It replies in Telegram
-confirming what it did with a link to the Notion page.
+A personal Discord agent: send a voice note or text, and it transcribes it
+(Whisper via Groq's free API), classifies intent with **Claude — powered by your
+own Claude Pro/Max subscription** (not a billed API key), and writes a **note**,
+**task**, or **draft** to Notion — or searches your existing Notion content. It
+replies in Discord confirming what it did with a link to the Notion page.
 
 ## How it works
 
 ```
-Telegram (voice/text)
-   └─ bot.py        receives the update, gates on your user ID
-        ├─ voice → transcriber.py (Whisper) → transcript
+Discord DM (voice/text)
+   └─ bot.py        receives the message, gates on your Discord user ID
+        ├─ voice → transcriber.py (Whisper via Groq) → transcript
         └─ text  → used as-is
-            └─ agent.py    Claude classifies intent + calls a tool
+            └─ agent.py    Claude (via the Claude Agent SDK, authed by your
+                 │          subscription) classifies intent + calls a tool
                  └─ notion_client_wrapper.py   writes to the right Notion DB
             └─ reply with confirmation + Notion link
 ```
 
-Files: `config.py` (env), `notion_client_wrapper.py` (Notion SDK calls),
-`agent.py` (Claude tool-use loop), `transcriber.py` (Whisper), `bot.py` / `main.py`
-(Telegram, long polling), `prompts/system.md` (the agent's brain).
+The reasoning runs through the **Claude Agent SDK**, which drives the Claude Code
+engine authenticated by your subscription via `CLAUDE_CODE_OAUTH_TOKEN`. The four
+Notion operations are registered as in-process tools, so no Anthropic API key and
+no per-message charge — usage counts against your subscription's limits.
 
-> Note: the Notion wrapper module is `notion_client_wrapper.py`, not `notion_client.py`,
-> so it doesn't shadow the installed `notion-client` package.
+Files: `config.py` (env), `notion_client_wrapper.py` (Notion SDK calls),
+`agent.py` (Claude Agent SDK + in-process Notion tools), `transcriber.py`
+(Whisper via Groq), `bot.py` / `main.py` (Discord gateway client),
+`prompts/system.md` (the agent's brain).
+
+> Note: the Notion wrapper module is `notion_client_wrapper.py`, not
+> `notion_client.py`, so it doesn't shadow the installed `notion-client` package.
 
 ## One-time setup
 
-1. **Telegram** — create a bot with [@BotFather](https://t.me/BotFather) for the token;
-   message [@userinfobot](https://t.me/userinfobot) for your numeric user ID.
-2. **Notion** — create three full-page databases (**Notes**, **Tasks**, **Drafts**) with
-   the schemas below. Create an internal integration
-   (https://www.notion.so/my-integrations), copy its token (`ntn_…`), and **share each
-   database with the integration** (database → ••• → Connections). Copy each database ID
-   (the 32-char string in the database URL).
-3. **Keys** — get a free [Groq API key](https://console.groq.com/keys) (Whisper transcription)
-   and an Anthropic API key from [console.anthropic.com](https://console.anthropic.com). Note: the
-   Anthropic API is pay-as-you-go and separate from a Claude Pro subscription — Pro does not include
-   API access.
+1. **Discord bot** — at the [Discord Developer Portal](https://discord.com/developers/applications):
+   create an application → **Bot** tab → copy the **token** (`DISCORD_BOT_TOKEN`).
+   Under **Privileged Gateway Intents**, enable **Message Content Intent**. Invite
+   the bot to a server you're in (OAuth2 → URL Generator → `bot` scope), then DM it.
+   Get your own user ID: Discord Settings → Advanced → enable **Developer Mode**,
+   then right-click your name → **Copy User ID** (`DISCORD_ALLOWED_USER_ID`).
+2. **Claude subscription token** — with a Claude Pro or Max plan, install Claude
+   Code and run `claude setup-token`. It opens a browser login and prints a
+   long-lived token (`sk-ant-oat01-…`) — paste it into `.env` as
+   `CLAUDE_CODE_OAUTH_TOKEN`. **This token is your subscription — keep it secret**
+   (env only, never committed; on a server, lock the box down to just you).
+3. **Notion** — create three full-page databases (**Notes**, **Tasks**, **Drafts**)
+   with the schemas below. Create an internal integration
+   (https://www.notion.so/my-integrations), copy its token (`ntn_…`), and **share
+   each database with the integration** (database → ••• → Connections). Copy each
+   database ID (the 32-char string in the database URL).
+4. **Groq key** — get a free [Groq API key](https://console.groq.com/keys) for
+   Whisper transcription (`GROQ_API_KEY`).
 
 ### Notion database schemas
 
@@ -53,9 +68,15 @@ Files: `config.py` (env), `notion_client_wrapper.py` (Notion SDK calls),
 
 ## Run locally
 
+The Claude Agent SDK needs **Node.js** (it runs the Claude Code engine) and the
+Claude Code CLI:
+
 ```bash
+npm install -g @anthropic-ai/claude-code   # if not already installed
+claude setup-token                          # one-time, paste token into .env
+
 pip install -r requirements.txt
-cp .env.example .env        # fill in all values
+cp .env.example .env                        # fill in all values
 python main.py
 ```
 
@@ -68,17 +89,22 @@ python agent.py                   # runs sample transcripts end-to-end to Notion
 
 ## Hosting (free, always-on)
 
-The bot uses **long polling** — outbound network only, no public URL or open port —
-so the simplest host is any always-on process.
+The bot uses an **outbound gateway connection** — no public URL or open port — so
+any always-on process works. The host needs **Node.js + the Claude Code CLI** and
+the `CLAUDE_CODE_OAUTH_TOKEN` in its environment (the bundled `Dockerfile` installs
+Node and the CLI for you).
 
-1. **Oracle Cloud Free Tier (recommended).** A genuinely *always-free* small VM. Clone the
-   repo, install deps, put your secrets in `.env`, and run under `systemd` so it restarts
-   on reboot:
+> **Single-user only.** Running on your subscription is fine for personal use, but
+> the bot must stay gated to your own Discord user ID — don't open it up to others.
+
+1. **Oracle Cloud Free Tier (recommended).** A genuinely *always-free* small VM.
+   Install Node + the CLI, run `claude setup-token`, put your secrets in `.env`,
+   and run under `systemd` so it restarts on reboot:
 
    ```ini
    # /etc/systemd/system/voice-agent.service
    [Unit]
-   Description=Voice Agent Telegram bot
+   Description=Voice Agent Discord bot
    After=network-online.target
 
    [Service]
@@ -94,23 +120,26 @@ so the simplest host is any always-on process.
    sudo systemctl enable --now voice-agent
    ```
 
-2. **Fly.io.** Deploy the `Dockerfile` as a worker (no `[http_service]` in `fly.toml`, one
-   always-on machine). Set secrets — never commit `.env`:
+2. **Fly.io.** Deploy the `Dockerfile` as a worker (no `[http_service]` in
+   `fly.toml`, one always-on machine). Set secrets — never commit `.env`:
    ```bash
-   fly secrets set TELEGRAM_BOT_TOKEN=… TELEGRAM_ALLOWED_USER_ID=… GROQ_API_KEY=… \
-     ANTHROPIC_API_KEY=… NOTION_API_KEY=… NOTION_NOTES_DB_ID=… \
+   fly secrets set DISCORD_BOT_TOKEN=… DISCORD_ALLOWED_USER_ID=… GROQ_API_KEY=… \
+     CLAUDE_CODE_OAUTH_TOKEN=… NOTION_API_KEY=… NOTION_NOTES_DB_ID=… \
      NOTION_TASKS_DB_ID=… NOTION_DRAFTS_DB_ID=…
    ```
 
-3. **Google Cloud Run (scale-to-zero).** Cloud Run is request-driven and scales to zero,
-   so long polling won't stay alive. To use it, switch `bot.py` to **webhook mode**
-   (`application.run_webhook(...)` + Telegram `setWebhook`) and expose the HTTPS URL. More
-   moving parts — only worth it if you specifically want scale-to-zero.
+Avoid scale-to-zero / sleep-on-inactivity free tiers (Cloud Run, Render/Railway
+free web tiers, PythonAnywhere free) — a gateway bot needs a persistent process.
 
-Avoid Render/Railway free web tiers (they sleep on inactivity) and PythonAnywhere free
-(no always-on task) for a polling bot.
+## Notes on cost & limits
+
+- **Transcription** is free on Groq's Whisper tier (rate-limited, fine for personal use).
+- **Reasoning** runs on your Claude subscription via `CLAUDE_CODE_OAUTH_TOKEN` — no
+  API key, no per-message charge. It counts against your plan's usage limits; as of
+  June 15 2026, headless Agent-SDK usage on a subscription draws from a monthly
+  credit pool, which is plenty for personal voice-note volume but not unlimited.
 
 ## Out of scope (v1)
 
-Web search, reminders, email/calendar, hardware webhook trigger, cross-session memory,
-multi-user — see `voice-agent-spec.md` §11 for the future roadmap.
+Web search, reminders, email/calendar, hardware webhook trigger, cross-session
+memory, multi-user — see `voice-agent-spec.md` §11 for the future roadmap.
