@@ -16,10 +16,14 @@ load_dotenv()
 # adaptive thinking.
 MODEL = "claude-sonnet-4-6"
 
+# Transcription via Groq's free Whisper API (OpenAI-compatible endpoint).
+GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+TRANSCRIBE_MODEL = "whisper-large-v3-turbo"
+
 _REQUIRED = (
     "TELEGRAM_BOT_TOKEN",
     "TELEGRAM_ALLOWED_USER_ID",
-    "OPENAI_API_KEY",
+    "GROQ_API_KEY",
     "ANTHROPIC_API_KEY",
     "NOTION_API_KEY",
     "NOTION_NOTES_DB_ID",
@@ -50,7 +54,7 @@ def validate() -> None:
 # validate() (from main.py) to fail fast before the bot starts.
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 TELEGRAM_ALLOWED_USER_ID = int(os.environ.get("TELEGRAM_ALLOWED_USER_ID", "0") or "0")
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY", "")
 NOTION_API_KEY = os.environ.get("NOTION_API_KEY", "")
 NOTION_NOTES_DB_ID = os.environ.get("NOTION_NOTES_DB_ID", "")

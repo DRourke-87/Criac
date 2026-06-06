@@ -1,6 +1,6 @@
 # Voice Agent — Personal Voice-to-Action Bot
 
-A personal Telegram agent: send a voice note or text, and it transcribes (Whisper),
+A personal Telegram agent: send a voice note or text, and it transcribes (Whisper via Groq's free API),
 classifies intent with Claude (`claude-sonnet-4-6`), and writes a **note**, **task**, or
 **draft** to Notion — or searches your existing Notion content. It replies in Telegram
 confirming what it did with a link to the Notion page.
@@ -33,7 +33,10 @@ Files: `config.py` (env), `notion_client_wrapper.py` (Notion SDK calls),
    (https://www.notion.so/my-integrations), copy its token (`ntn_…`), and **share each
    database with the integration** (database → ••• → Connections). Copy each database ID
    (the 32-char string in the database URL).
-3. **Keys** — get an OpenAI API key (Whisper) and an Anthropic API key.
+3. **Keys** — get a free [Groq API key](https://console.groq.com/keys) (Whisper transcription)
+   and an Anthropic API key from [console.anthropic.com](https://console.anthropic.com). Note: the
+   Anthropic API is pay-as-you-go and separate from a Claude Pro subscription — Pro does not include
+   API access.
 
 ### Notion database schemas
 
@@ -94,7 +97,7 @@ so the simplest host is any always-on process.
 2. **Fly.io.** Deploy the `Dockerfile` as a worker (no `[http_service]` in `fly.toml`, one
    always-on machine). Set secrets — never commit `.env`:
    ```bash
-   fly secrets set TELEGRAM_BOT_TOKEN=… TELEGRAM_ALLOWED_USER_ID=… OPENAI_API_KEY=… \
+   fly secrets set TELEGRAM_BOT_TOKEN=… TELEGRAM_ALLOWED_USER_ID=… GROQ_API_KEY=… \
      ANTHROPIC_API_KEY=… NOTION_API_KEY=… NOTION_NOTES_DB_ID=… \
      NOTION_TASKS_DB_ID=… NOTION_DRAFTS_DB_ID=…
    ```
