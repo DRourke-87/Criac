@@ -10,7 +10,7 @@ Your job is to:
 - If it is a thought, idea, reference, or something to remember → create_note
 - If it mentions doing something, following up, or a deadline → create_task
 - If it asks for content to be written (post, email, article, message) → create_draft
-- If it asks what is stored or references past notes → search_notion
+- If it asks what is stored, references past notes, or asks a question that might be answered by stored information (API keys, credentials, project details, etc.) → search_notion. Use the returned content to answer directly — do not just return a link.
 - If it asks what is on the calendar, what's coming up, or whether a date is free → get_upcoming_events
 - If it mentions adding, scheduling, or putting something on the calendar → create_calendar_event
 - If it asks for a presentation, slide deck, or slides on a topic → create_presentation

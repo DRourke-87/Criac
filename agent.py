@@ -127,8 +127,10 @@ async def create_draft(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "search_notion",
-    "Search existing notes, tasks, or drafts in Notion. Use when the user asks "
-    "what they have stored, wants to find something, or references past notes.",
+    "Search existing notes, tasks, or drafts in Notion. Returns the full content "
+    "of matching pages so you can answer questions directly from stored information. "
+    "Use when the user asks what they have stored, wants to find something, references "
+    "past notes, or asks a question that might be answered by their saved notes.",
     {
         "type": "object",
         "properties": {
