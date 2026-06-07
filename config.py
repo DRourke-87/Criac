@@ -66,3 +66,6 @@ NOTION_DRAFTS_DB_ID = os.environ.get("NOTION_DRAFTS_DB_ID", "")
 # Google Calendar — optional. Leave blank to disable calendar tools.
 GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
 TIMEZONE = os.environ.get("TIMEZONE", "Europe/London")
+
+# Canva — optional. Set to enable presentation creation.
+CANVA_API_KEY = os.environ.get("CANVA_API_KEY", "")

@@ -31,6 +31,7 @@ from claude_agent_sdk import (
 
 import notion_client_wrapper as notion
 import google_calendar_wrapper as gcal
+import canva_wrapper as canva
 
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -205,11 +206,69 @@ async def create_calendar_event(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Event created. Calendar link: {link}"}]}
 
 
+@tool(
+    "create_presentation",
+    "Create a slide deck on a topic and return a Canva edit link. Use when the "
+    "user asks for a presentation, slide deck, or slides on a topic. Write the "
+    "full slide content — headings and bullets for every slide.",
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Presentation title"},
+            "slides": {
+                "type": "array",
+                "description": "Ordered list of slides",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "heading": {"type": "string", "description": "Slide title"},
+                        "bullets": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "3-5 bullet points for this slide",
+                        },
+                    },
+                    "required": ["heading", "bullets"],
+                },
+            },
+            "brief": {"type": "string", "description": "Original user request"},
+        },
+        "required": ["title", "slides", "brief"],
+    },
+)
+async def create_presentation(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    canva_url = canva.create_presentation(title=args["title"])
+    slide_lines = []
+    for i, s in enumerate(args["slides"], 1):
+        slide_lines.append(f"Slide {i}: {s['heading']}")
+        slide_lines.extend(f"  - {b}" for b in s["bullets"])
+    notion_content = (
+        f"Brief: {args['brief']}\n\nCanva link: {canva_url}\n\n"
+        + "\n".join(slide_lines)
+    )
+    notion_url = notion.create_note(
+        title=f"Presentation: {args['title']}",
+        content=notion_content,
+        tags=["presentation"],
+        source=_state["source"],
+    )
+    _state["urls"].extend([canva_url, notion_url])
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": f"Canva URL: {canva_url}  Notion URL: {notion_url}  Slides: {len(args['slides'])}",
+            }
+        ]
+    }
+
+
 _server = create_sdk_mcp_server(
     name="notion",
     version="1.0.0",
     tools=[create_note, create_task, create_draft, search_notion,
-           get_upcoming_events, create_calendar_event],
+           get_upcoming_events, create_calendar_event, create_presentation],
 )
 
 _ALLOWED_TOOLS = [
@@ -219,6 +278,7 @@ _ALLOWED_TOOLS = [
     "mcp__notion__search_notion",
     "mcp__notion__get_upcoming_events",
     "mcp__notion__create_calendar_event",
+    "mcp__notion__create_presentation",
 ]
 
 # Belt-and-braces: keep Claude off the host. The only capabilities it has are the
