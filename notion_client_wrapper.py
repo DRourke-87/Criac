@@ -103,6 +103,10 @@ def create_draft(title: str, type: str, content: str, brief: str, source: str) -
     return page["url"]
 
 
+def _normalise_id(db_id: str) -> str:
+    return db_id.replace("-", "").lower()
+
+
 _DB_IDS = {
     "notes": (config.NOTION_NOTES_DB_ID,),
     "tasks": (config.NOTION_TASKS_DB_ID,),
@@ -114,12 +118,12 @@ def search(query: str, database: str) -> list[dict]:
     """Full-text search across the requested DB(s). Returns [{title, content, url}]."""
     if database == "all":
         wanted = {
-            config.NOTION_NOTES_DB_ID,
-            config.NOTION_TASKS_DB_ID,
-            config.NOTION_DRAFTS_DB_ID,
+            _normalise_id(config.NOTION_NOTES_DB_ID),
+            _normalise_id(config.NOTION_TASKS_DB_ID),
+            _normalise_id(config.NOTION_DRAFTS_DB_ID),
         }
     else:
-        wanted = set(_DB_IDS.get(database, ()))
+        wanted = {_normalise_id(i) for i in _DB_IDS.get(database, ())}
 
     response = _client().search(
         query=query, filter={"property": "object", "value": "page"}
@@ -127,7 +131,7 @@ def search(query: str, database: str) -> list[dict]:
     results: list[dict] = []
     for page in response.get("results", []):
         parent = page.get("parent", {})
-        if parent.get("type") == "database_id" and parent.get("database_id") in wanted:
+        if parent.get("type") == "database_id" and _normalise_id(parent.get("database_id", "")) in wanted:
             results.append({
                 "title": _page_title(page),
                 "content": _page_text(page),
