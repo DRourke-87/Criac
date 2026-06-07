@@ -31,12 +31,13 @@ from claude_agent_sdk import (
 
 import notion_client_wrapper as notion
 import google_calendar_wrapper as gcal
+import pptx_wrapper as pptx
 
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
 # Serialises run() calls and holds the current message's state for the tools.
 _lock = asyncio.Lock()
-_state: dict = {"source": "voice", "urls": [], "used": False}
+_state: dict = {"source": "voice", "urls": [], "used": False, "files": []}
 
 
 @tool(
@@ -205,11 +206,70 @@ async def create_calendar_event(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Event created. Calendar link: {link}"}]}
 
 
+@tool(
+    "create_presentation",
+    "Create a slide deck on a topic via Canva and return an edit link. Use when "
+    "the user asks for a presentation, slide deck, or slides on a topic. Write "
+    "the full slide content — headings and bullets for every slide. Maximum 7 "
+    "content slides (plus the title slide handled by the title field).",
+    {
+        "type": "object",
+        "properties": {
+            "title": {"type": "string", "description": "Presentation title"},
+            "slides": {
+                "type": "array",
+                "description": "Ordered list of up to 7 content slides",
+                "maxItems": 7,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "heading": {"type": "string", "description": "Slide title"},
+                        "bullets": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "3-5 bullet points for this slide",
+                        },
+                    },
+                    "required": ["heading", "bullets"],
+                },
+            },
+            "brief": {"type": "string", "description": "Original user request"},
+        },
+        "required": ["title", "slides", "brief"],
+    },
+)
+async def create_presentation(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    file_path = await asyncio.to_thread(
+        pptx.create_presentation, args["title"], args["slides"]
+    )
+    slide_lines = []
+    for i, s in enumerate(args["slides"], 1):
+        slide_lines.append(f"Slide {i}: {s['heading']}")
+        slide_lines.extend(f"  - {b}" for b in s["bullets"])
+    notion_url = notion.create_note(
+        title=f"Presentation: {args['title']}",
+        content=f"Brief: {args['brief']}\n\n" + "\n".join(slide_lines),
+        tags=["presentation"],
+        source=_state["source"],
+    )
+    _state["files"].append(file_path)
+    _state["urls"].append(notion_url)
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": f"File: {file_path}  Notion URL: {notion_url}  Slides: {len(args['slides'])}",
+            }
+        ]
+    }
+
+
 _server = create_sdk_mcp_server(
     name="notion",
     version="1.0.0",
     tools=[create_note, create_task, create_draft, search_notion,
-           get_upcoming_events, create_calendar_event],
+           get_upcoming_events, create_calendar_event, create_presentation],
 )
 
 _ALLOWED_TOOLS = [
@@ -219,6 +279,7 @@ _ALLOWED_TOOLS = [
     "mcp__notion__search_notion",
     "mcp__notion__get_upcoming_events",
     "mcp__notion__create_calendar_event",
+    "mcp__notion__create_presentation",
 ]
 
 # Belt-and-braces: keep Claude off the host. The only capabilities it has are the
@@ -247,7 +308,7 @@ async def run(transcript: str, source: str = "voice") -> dict:
     Returns {"reply": str, "notion_url": str | None}.
     """
     async with _lock:
-        _state.update(source=source, urls=[], used=False)
+        _state.update(source=source, urls=[], used=False, files=[])
 
         result_text: str | None = None
         texts: list[str] = []
@@ -262,6 +323,7 @@ async def run(transcript: str, source: str = "voice") -> dict:
 
         reply = (result_text or "\n".join(texts)).strip()
         notion_url = _state["urls"][-1] if _state["urls"] else None
+        file_path = _state["files"][-1] if _state["files"] else None
         used = _state["used"]
 
     # Edge case: Claude replied without ever calling a tool. Store the raw
@@ -276,7 +338,7 @@ async def run(transcript: str, source: str = "voice") -> dict:
     if not reply:
         reply = "✅ Done." + (f" — {notion_url}" if notion_url else "")
 
-    return {"reply": reply, "notion_url": notion_url}
+    return {"reply": reply, "notion_url": notion_url, "file_path": file_path}
 
 
 if __name__ == "__main__":
