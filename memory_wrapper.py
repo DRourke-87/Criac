@@ -62,6 +62,10 @@ def save_memory(key: str, value: str, category: str, tags: list[str] | None = No
     return page["url"]
 
 
+def _normalise_id(db_id: str) -> str:
+    return db_id.replace("-", "").lower()
+
+
 def search_memories(query: str, limit: int = 10) -> list[dict]:
     """Search active memories via full-text search. Returns [{id, key, value, category, url}]."""
     if not config.NOTION_MEMORY_DB_ID:
@@ -70,10 +74,11 @@ def search_memories(query: str, limit: int = 10) -> list[dict]:
         query=query,
         filter={"property": "object", "value": "page"},
     )
+    target_id = _normalise_id(config.NOTION_MEMORY_DB_ID)
     results: list[dict] = []
     for page in resp.get("results", []):
         parent = page.get("parent", {})
-        if parent.get("database_id") != config.NOTION_MEMORY_DB_ID:
+        if _normalise_id(parent.get("database_id", "")) != target_id:
             continue
         props = page.get("properties", {})
         if not props.get("Active", {}).get("checkbox", True):
