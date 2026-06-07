@@ -50,14 +50,19 @@ async def _process(text: str, source: str, update: Update,
         result = await agent.run(text, source, progress_callback=_progress)
         files = result.get("files") or ([result["file_path"]] if result.get("file_path") else [])
         if files:
+            reply = result["reply"] or ""
+            caption = reply[:1024] if reply else None
+            overflow = reply[1024:] if len(reply) > 1024 else None
             for i, fp in enumerate(files):
                 with open(fp, "rb") as f:
                     await context.bot.send_document(
                         chat_id=update.effective_chat.id,
                         document=f,
-                        caption=result["reply"] if i == 0 else None,
+                        caption=caption if i == 0 else None,
                     )
                 Path(fp).unlink(missing_ok=True)
+            if overflow:
+                await update.message.reply_text(overflow)
         else:
             await update.message.reply_text(result["reply"])
     except Exception:  # noqa: BLE001 — surface a friendly message, log the rest
