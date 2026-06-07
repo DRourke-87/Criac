@@ -9,8 +9,11 @@ Module is named `notion_client_wrapper` to avoid shadowing the installed
 
 from __future__ import annotations
 
+import logging
+import os
 import sys
 
+import httpx
 from notion_client import Client
 
 import config
@@ -135,6 +138,83 @@ def _page_title(page: dict) -> str:
         if prop.get("type") == "title":
             return "".join(part.get("plain_text", "") for part in prop.get("title", []))
     return "(untitled)"
+
+
+_log = logging.getLogger(__name__)
+
+_NOTION_VERSION = "2022-06-28"
+_PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+
+
+def _api_headers() -> dict[str, str]:
+    return {"Authorization": f"Bearer {config.NOTION_API_KEY}", "Notion-Version": _NOTION_VERSION}
+
+
+def _attach_file_to_page(page_id: str, file_path: str) -> None:
+    """Upload file_path to Notion and append it as a file block on page_id."""
+    filename = os.path.basename(file_path)
+    hdrs = _api_headers()
+
+    # Step 1 — create the upload record
+    resp = httpx.post(
+        "https://api.notion.com/v1/file_uploads",
+        headers={**hdrs, "Content-Type": "application/json"},
+        json={"name": filename},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    upload_id = resp.json()["id"]
+
+    # Step 2 — send the binary content
+    with open(file_path, "rb") as fh:
+        resp2 = httpx.post(
+            f"https://api.notion.com/v1/file_uploads/{upload_id}/send",
+            headers=hdrs,
+            files={"file": (filename, fh, _PPTX_MIME)},
+            timeout=60,
+        )
+        resp2.raise_for_status()
+
+    # Step 3 — append a file block to the page
+    _client().blocks.children.append(
+        page_id,
+        children=[{
+            "type": "file",
+            "file": {
+                "type": "file_upload",
+                "file_upload": {"id": upload_id},
+                "name": filename,
+            },
+        }],
+    )
+
+
+def upload_presentation_to_notion(
+    title: str, content: str, file_path: str, source: str
+) -> str:
+    """Create a Notion note page with the slide outline and attach the .pptx file.
+
+    The file attach is best-effort — a warning is logged on failure but the
+    page URL is always returned.
+    """
+    page = _client().pages.create(
+        parent={"database_id": config.NOTION_NOTES_DB_ID},
+        properties={
+            "Title": {"title": _title(title)},
+            "Content": {"rich_text": _rich_text(content)},
+            "Tags": {"multi_select": _multi_select(["presentation"])},
+            "Source": {"select": {"name": source}},
+        },
+    )
+    page_url: str = page["url"]
+    page_id: str = page["id"]
+
+    try:
+        _attach_file_to_page(page_id, file_path)
+    except Exception as exc:
+        _log.warning("Could not attach .pptx to Notion page %s: %s", page_id, exc)
+
+    return page_url
 
 
 if __name__ == "__main__":

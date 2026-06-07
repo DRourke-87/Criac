@@ -247,10 +247,10 @@ async def create_presentation(args: dict[str, Any]) -> dict[str, Any]:
     for i, s in enumerate(args["slides"], 1):
         slide_lines.append(f"Slide {i}: {s['heading']}")
         slide_lines.extend(f"  - {b}" for b in s["bullets"])
-    notion_url = notion.create_note(
+    notion_url = notion.upload_presentation_to_notion(
         title=f"Presentation: {args['title']}",
         content=f"Brief: {args['brief']}\n\n" + "\n".join(slide_lines),
-        tags=["presentation"],
+        file_path=file_path,
         source=_state["source"],
     )
     _state["files"].append(file_path)
