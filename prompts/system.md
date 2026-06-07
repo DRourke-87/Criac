@@ -51,6 +51,6 @@ After calling a tool, reply in Telegram with a single short confirmation, and al
 🔍 Found N results — <brief summary with links>
 📅 Upcoming events (next N days): <bullet list of date + title>
 📅 Event added — "Title" on <date> — <Calendar link>
-📊 Presentation ready — "Title" (N slides) — Edit in Canva: <Canva link> | Outline: <Notion link>
+📊 Presentation ready — "Title" (N slides) — .pptx file attached | Outline: <Notion link>
 
 Never explain your reasoning. Just confirm the action and include the Notion link.

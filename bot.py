@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import tempfile
+from pathlib import Path
 
 from telegram import Update
 from telegram.constants import ChatAction
@@ -27,14 +28,25 @@ def _authorized(update: Update) -> bool:
     return user is not None and user.id == config.TELEGRAM_ALLOWED_USER_ID
 
 
-async def _process(text: str, source: str, update: Update) -> None:
+async def _process(text: str, source: str, update: Update,
+                   context: ContextTypes.DEFAULT_TYPE) -> None:
     """Run the agent on text and reply, mapping failures to user messages."""
     if not text:
         await update.message.reply_text("⚠️ Didn't catch anything — was that empty?")
         return
     try:
         result = await agent.run(text, source)
-        await update.message.reply_text(result["reply"])
+        file_path = result.get("file_path")
+        if file_path:
+            with open(file_path, "rb") as f:
+                await context.bot.send_document(
+                    chat_id=update.effective_chat.id,
+                    document=f,
+                    caption=result["reply"],
+                )
+            Path(file_path).unlink(missing_ok=True)
+        else:
+            await update.message.reply_text(result["reply"])
     except Exception:  # noqa: BLE001 — surface a friendly message, log the rest
         logger.exception("Agent failed")
         await update.message.reply_text("⚠️ Agent error — try again")
@@ -59,14 +71,14 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         )
         return
 
-    await _process(transcript, "voice", update)
+    await _process(transcript, "voice", update, context)
 
 
 async def handle_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if not _authorized(update):
         return
     await context.bot.send_chat_action(update.effective_chat.id, ChatAction.TYPING)
-    await _process((update.message.text or "").strip(), "text", update)
+    await _process((update.message.text or "").strip(), "text", update, context)
 
 
 def build_application() -> Application:
