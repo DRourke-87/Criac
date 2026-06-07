@@ -120,11 +120,14 @@ def get_all_active_memories(limit: int = 30) -> list[dict]:
     if not config.NOTION_MEMORY_DB_ID:
         return []
     try:
-        resp = _client().databases.query(
-            database_id=config.NOTION_MEMORY_DB_ID,
-            filter={"property": "Active", "checkbox": {"equals": True}},
-            sorts=[{"timestamp": "last_edited_time", "direction": "descending"}],
-            page_size=limit,
+        resp = _client().request(
+            path=f"databases/{config.NOTION_MEMORY_DB_ID}/query",
+            method="POST",
+            body={
+                "filter": {"property": "Active", "checkbox": {"equals": True}},
+                "sorts": [{"timestamp": "last_edited_time", "direction": "descending"}],
+                "page_size": limit,
+            },
         )
     except Exception as exc:
         _log.warning("Could not fetch memories: %s", exc)
