@@ -67,3 +67,9 @@ NOTION_DRAFTS_DB_ID = os.environ.get("NOTION_DRAFTS_DB_ID", "")
 GOOGLE_CALENDAR_ID = os.environ.get("GOOGLE_CALENDAR_ID", "primary")
 TIMEZONE = os.environ.get("TIMEZONE", "Europe/London")
 
+# Persistent memory — optional. Set NOTION_MEMORY_DB_ID to enable cross-session memory.
+NOTION_MEMORY_DB_ID = os.environ.get("NOTION_MEMORY_DB_ID", "")
+
+# Brave Search — optional. Set BRAVE_API_KEY to enable real-time web search.
+BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
+

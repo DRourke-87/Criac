@@ -111,7 +111,7 @@ _DB_IDS = {
 
 
 def search(query: str, database: str) -> list[dict]:
-    """Full-text search across the requested DB(s). Returns [{title, url}]."""
+    """Full-text search across the requested DB(s). Returns [{title, content, url}]."""
     if database == "all":
         wanted = {
             config.NOTION_NOTES_DB_ID,
@@ -128,7 +128,11 @@ def search(query: str, database: str) -> list[dict]:
     for page in response.get("results", []):
         parent = page.get("parent", {})
         if parent.get("type") == "database_id" and parent.get("database_id") in wanted:
-            results.append({"title": _page_title(page), "url": page.get("url", "")})
+            results.append({
+                "title": _page_title(page),
+                "content": _page_text(page),
+                "url": page.get("url", ""),
+            })
     return results
 
 
@@ -138,6 +142,17 @@ def _page_title(page: dict) -> str:
         if prop.get("type") == "title":
             return "".join(part.get("plain_text", "") for part in prop.get("title", []))
     return "(untitled)"
+
+
+def _page_text(page: dict) -> str:
+    """Extract all plain text from rich_text properties — covers Content, Context, Brief, etc."""
+    parts = []
+    for name, prop in page.get("properties", {}).items():
+        if prop.get("type") == "rich_text":
+            text = "".join(p.get("plain_text", "") for p in prop.get("rich_text", []))
+            if text:
+                parts.append(text)
+    return "\n".join(parts)
 
 
 _log = logging.getLogger(__name__)

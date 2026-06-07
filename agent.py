@@ -32,6 +32,8 @@ from claude_agent_sdk import (
 import notion_client_wrapper as notion
 import google_calendar_wrapper as gcal
 import pptx_wrapper as pptx
+import memory_wrapper as memory
+import brave_search
 
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -125,8 +127,10 @@ async def create_draft(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "search_notion",
-    "Search existing notes, tasks, or drafts in Notion. Use when the user asks "
-    "what they have stored, wants to find something, or references past notes.",
+    "Search existing notes, tasks, or drafts in Notion. Returns the full content "
+    "of matching pages so you can answer questions directly from stored information. "
+    "Use when the user asks what they have stored, wants to find something, references "
+    "past notes, or asks a question that might be answered by their saved notes.",
     {
         "type": "object",
         "properties": {
@@ -265,11 +269,139 @@ async def create_presentation(args: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@tool(
+    "save_memory",
+    "Save a persistent fact, preference, or piece of context about the user so it "
+    "can be recalled in future conversations. Use when the user says 'remember that', "
+    "'my preference is', 'note for the future', or similar.",
+    {
+        "type": "object",
+        "properties": {
+            "key": {"type": "string", "description": "Short label for this memory (max 60 chars)"},
+            "value": {"type": "string", "description": "The full fact or preference to store"},
+            "category": {
+                "type": "string",
+                "enum": ["Clients", "Projects", "Preferences", "Decisions", "Context", "Other"],
+                "description": "Category that best fits this memory",
+            },
+            "tags": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Optional tags for easier retrieval",
+            },
+        },
+        "required": ["key", "value", "category"],
+    },
+)
+async def save_memory(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    url = memory.save_memory(
+        key=args["key"],
+        value=args["value"],
+        category=args["category"],
+        tags=args.get("tags", []),
+    )
+    _state["urls"].append(url)
+    return {"content": [{"type": "text", "text": f"Memory saved. Notion URL: {url}"}]}
+
+
+@tool(
+    "recall_memory",
+    "Search persistent memory for stored facts, preferences, or context. Use when "
+    "the user asks what you remember, references something from a past conversation, "
+    "or asks about a client, project, or preference.",
+    {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Keywords to search for in memory"},
+        },
+        "required": ["query"],
+    },
+)
+async def recall_memory(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    results = memory.search_memories(query=args["query"])
+    return {"content": [{"type": "text", "text": json.dumps(results)}]}
+
+
+@tool(
+    "forget_memory",
+    "Mark a stored memory as forgotten so it is no longer injected into future "
+    "conversations. Use when the user says 'forget that', 'that's no longer true', "
+    "or wants to remove a specific memory. First use recall_memory to find the page id.",
+    {
+        "type": "object",
+        "properties": {
+            "page_id": {
+                "type": "string",
+                "description": "The Notion page ID of the memory to forget (from recall_memory results)",
+            },
+            "key": {"type": "string", "description": "The key label of the memory being forgotten (for confirmation)"},
+        },
+        "required": ["page_id", "key"],
+    },
+)
+async def forget_memory(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    success = memory.forget_memory(page_id=args["page_id"])
+    status = "forgotten" if success else "could not be forgotten (check logs)"
+    return {"content": [{"type": "text", "text": f"Memory '{args['key']}' {status}."}]}
+
+
+@tool(
+    "web_search",
+    "Search the internet for current information. Use when the user asks about "
+    "recent news, company info, procurement notices, policy updates, or anything "
+    "that requires up-to-date information. Summarise the results in your reply.",
+    {
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search query"},
+            "count": {
+                "type": "integer",
+                "description": "Number of results to return (default 5, max 10)",
+            },
+            "save_as_note": {
+                "type": "boolean",
+                "description": "If true, save the summarised results as a Notion note",
+            },
+        },
+        "required": ["query"],
+    },
+)
+async def web_search(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    results = await asyncio.to_thread(
+        brave_search.search, args["query"], args.get("count", 5)
+    )
+    summary_lines = [f"{r['title']} — {r['url']}\n  {r['description']}" for r in results]
+    summary = "\n\n".join(summary_lines)
+
+    if args.get("save_as_note") and results:
+        url = notion.create_note(
+            title=f"Search: {args['query'][:55]}",
+            content=f"Query: {args['query']}\n\n{summary}",
+            tags=["search"],
+            source=_state["source"],
+        )
+        _state["urls"].append(url)
+        return {
+            "content": [
+                {"type": "text", "text": f"Results:\n{summary}\n\nSaved to Notion: {url}"}
+            ]
+        }
+
+    return {"content": [{"type": "text", "text": f"Results:\n{summary}"}]}
+
+
 _server = create_sdk_mcp_server(
     name="notion",
     version="1.0.0",
-    tools=[create_note, create_task, create_draft, search_notion,
-           get_upcoming_events, create_calendar_event, create_presentation],
+    tools=[
+        create_note, create_task, create_draft, search_notion,
+        get_upcoming_events, create_calendar_event, create_presentation,
+        save_memory, recall_memory, forget_memory, web_search,
+    ],
 )
 
 _ALLOWED_TOOLS = [
@@ -280,20 +412,26 @@ _ALLOWED_TOOLS = [
     "mcp__notion__get_upcoming_events",
     "mcp__notion__create_calendar_event",
     "mcp__notion__create_presentation",
+    "mcp__notion__save_memory",
+    "mcp__notion__recall_memory",
+    "mcp__notion__forget_memory",
+    "mcp__notion__web_search",
 ]
 
-# Belt-and-braces: keep Claude off the host. The only capabilities it has are the
-# four Notion tools above; explicitly deny the built-in filesystem/shell tools.
+# Belt-and-braces: keep Claude off the host filesystem and shell.
 _DISALLOWED_TOOLS = [
     "Bash", "Read", "Write", "Edit", "Glob", "Grep",
     "WebSearch", "WebFetch", "NotebookEdit", "Task", "TodoWrite",
 ]
 
 
-def _options() -> ClaudeAgentOptions:
+def _options(memory_context: str = "") -> ClaudeAgentOptions:
     today = datetime.date.today().isoformat()
+    prefix = f"Today's date is {today}.\n\n"
+    if memory_context:
+        prefix += f"## Persistent Memory\nThe following facts are stored about the user:\n{memory_context}\n\n"
     return ClaudeAgentOptions(
-        system_prompt=f"Today's date is {today}.\n\n{_SYSTEM_PROMPT}",
+        system_prompt=prefix + _SYSTEM_PROMPT,
         mcp_servers={"notion": _server},
         allowed_tools=_ALLOWED_TOOLS,
         disallowed_tools=_DISALLOWED_TOOLS,
@@ -307,12 +445,20 @@ async def run(transcript: str, source: str = "voice") -> dict:
 
     Returns {"reply": str, "notion_url": str | None}.
     """
+    # Fetch persistent memories outside the lock — read-only and safe to parallelise.
+    memories = memory.get_all_active_memories()
+    memory_context = ""
+    if memories:
+        memory_context = "\n".join(
+            f"- [{m['category']}] {m['key']}: {m['value']}" for m in memories
+        )
+
     async with _lock:
         _state.update(source=source, urls=[], used=False, files=[])
 
         result_text: str | None = None
         texts: list[str] = []
-        async for message in query(prompt=transcript, options=_options()):
+        async for message in query(prompt=transcript, options=_options(memory_context)):
             if isinstance(message, AssistantMessage):
                 for block in message.content:
                     if isinstance(block, TextBlock):
