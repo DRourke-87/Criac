@@ -16,6 +16,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import json
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
@@ -436,14 +437,21 @@ def _options(memory_context: str = "") -> ClaudeAgentOptions:
         allowed_tools=_ALLOWED_TOOLS,
         disallowed_tools=_DISALLOWED_TOOLS,
         permission_mode="bypassPermissions",
-        max_turns=8,
+        max_turns=20,
     )
 
 
-async def run(transcript: str, source: str = "voice") -> dict:
+async def run(
+    transcript: str,
+    source: str = "voice",
+    progress_callback: Callable[[str], Awaitable[None]] | None = None,
+) -> dict:
     """Send the transcript to Claude and action it.
 
-    Returns {"reply": str, "notion_url": str | None}.
+    Returns {"reply": str, "notion_url": str | None, "all_urls": list,
+             "file_path": str | None, "files": list}.
+    progress_callback, if provided, is called with "PLAN: ..." and
+    "STEP_DONE: ..." lines as they appear mid-stream.
     """
     # Fetch persistent memories outside the lock — read-only and safe to parallelise.
     memories = memory.get_all_active_memories()
@@ -463,6 +471,11 @@ async def run(transcript: str, source: str = "voice") -> dict:
                 for block in message.content:
                     if isinstance(block, TextBlock):
                         texts.append(block.text)
+                        if progress_callback:
+                            for line in block.text.splitlines():
+                                s = line.strip()
+                                if s.startswith("PLAN:") or s.startswith("STEP_DONE:"):
+                                    await progress_callback(s)
             elif isinstance(message, ResultMessage):
                 if message.result:
                     result_text = message.result
@@ -470,21 +483,30 @@ async def run(transcript: str, source: str = "voice") -> dict:
         reply = (result_text or "\n".join(texts)).strip()
         notion_url = _state["urls"][-1] if _state["urls"] else None
         file_path = _state["files"][-1] if _state["files"] else None
+        all_urls = list(_state["urls"])
+        files = list(_state["files"])
         used = _state["used"]
 
-    # Edge case: Claude replied without ever calling a tool. Store the raw
-    # transcript as a note so nothing is lost.
-    if not used:
+    # Edge case: Claude replied without ever calling a tool and produced no
+    # meaningful text. Store the raw transcript as a note so nothing is lost.
+    if not used and not texts:
         title = transcript[:60]
         notion_url = notion.create_note(
             title=title, content=transcript, tags=[], source=source
         )
+        all_urls = [notion_url]
         reply = f'✅ Note saved — "{title}" — {notion_url}'
 
     if not reply:
         reply = "✅ Done." + (f" — {notion_url}" if notion_url else "")
 
-    return {"reply": reply, "notion_url": notion_url, "file_path": file_path}
+    return {
+        "reply": reply,
+        "notion_url": notion_url,
+        "all_urls": all_urls,
+        "file_path": file_path,
+        "files": files,
+    }
 
 
 if __name__ == "__main__":
