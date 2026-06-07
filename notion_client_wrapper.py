@@ -131,7 +131,7 @@ def search(query: str, database: str) -> list[dict]:
     results: list[dict] = []
     for page in response.get("results", []):
         parent = page.get("parent", {})
-        if parent.get("type") == "database_id" and _normalise_id(parent.get("database_id", "")) in wanted:
+        if _normalise_id(parent.get("database_id", "")) in wanted:
             results.append({
                 "title": _page_title(page),
                 "content": _page_text(page),
