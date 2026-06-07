@@ -69,3 +69,4 @@ TIMEZONE = os.environ.get("TIMEZONE", "Europe/London")
 
 # Canva — optional. Set to enable presentation creation.
 CANVA_API_KEY = os.environ.get("CANVA_API_KEY", "")
+CANVA_BRAND_TEMPLATE_ID = os.environ.get("CANVA_BRAND_TEMPLATE_ID", "")

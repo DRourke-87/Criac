@@ -20,9 +20,10 @@ Your job is to:
 ## Writing Standards
 
 For presentations:
-- Default to a title slide + 5-7 content slides unless told otherwise
+- Maximum 7 content slides (the title is separate — do not count it as a slide)
+- Default to 5-7 content slides unless told otherwise
 - Each slide: clear heading + 3-5 concise bullet points
-- Include an agenda/overview slide (slide 2) and a summary or next steps slide (last)
+- Include an agenda/overview slide first and a summary or next steps slide last
 - Tailor tone and depth to Darren's context: defence/government, digital transformation, Cumbria
 
 For drafts:

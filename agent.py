@@ -208,16 +208,18 @@ async def create_calendar_event(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "create_presentation",
-    "Create a slide deck on a topic and return a Canva edit link. Use when the "
-    "user asks for a presentation, slide deck, or slides on a topic. Write the "
-    "full slide content — headings and bullets for every slide.",
+    "Create a slide deck on a topic via Canva and return an edit link. Use when "
+    "the user asks for a presentation, slide deck, or slides on a topic. Write "
+    "the full slide content — headings and bullets for every slide. Maximum 7 "
+    "content slides (plus the title slide handled by the title field).",
     {
         "type": "object",
         "properties": {
             "title": {"type": "string", "description": "Presentation title"},
             "slides": {
                 "type": "array",
-                "description": "Ordered list of slides",
+                "description": "Ordered list of up to 7 content slides",
+                "maxItems": 7,
                 "items": {
                     "type": "object",
                     "properties": {
