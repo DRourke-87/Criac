@@ -17,5 +17,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
-# Outbound gateway connection — no inbound port required.
+# Flask endpoint for Alexa skill (proxied via nginx on the host).
+EXPOSE 8080
+
 CMD ["python", "main.py"]

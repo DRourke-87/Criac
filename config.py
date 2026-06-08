@@ -73,3 +73,6 @@ NOTION_MEMORY_DB_ID = os.environ.get("NOTION_MEMORY_DB_ID", "")
 # Brave Search — optional. Set BRAVE_API_KEY to enable real-time web search.
 BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 
+# Alexa — optional. Set ALEXA_SKILL_ID to validate incoming requests match your skill.
+ALEXA_SKILL_ID = os.environ.get("ALEXA_SKILL_ID", "")
+
