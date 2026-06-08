@@ -12,9 +12,10 @@
             }
           ],
           "samples": [
-            "{query}",
             "tell criac to {query}",
-            "ask criac to {query}"
+            "ask criac to {query}",
+            "criac {query}",
+            "to {query}"
           ]
         },
         { "name": "AMAZON.CancelIntent", "samples": [] },
