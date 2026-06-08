@@ -68,7 +68,7 @@ def alexa():
     req_type = data.get("request", {}).get("type", "")
 
     if req_type == "LaunchRequest":
-        return jsonify(_speak("Hi, I'm ready. What would you like to do?"))
+        return jsonify(_speak("Hi, I'm ready. What would you like to do?", end_session=False))
 
     if req_type == "IntentRequest":
         text = _extract_query(data)
