@@ -177,9 +177,12 @@ async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
 
 @tool(
     "create_calendar_event",
-    "Add an event to the family Google Calendar. Use when the user says they want "
+    "Add an event to a Google Calendar. Use when the user says they want "
     "to add, schedule, or put something on the calendar. Always infer a sensible "
-    "end time (default 1 hour after start) if not stated.",
+    "end time (default 1 hour after start) if not stated. If the user mentions a "
+    "specific calendar by name (e.g. 'Faron Little', 'family', 'work'), pass that "
+    "name in the calendar field and the wrapper will resolve it. Omit calendar to "
+    "use the default write calendar.",
     {
         "type": "object",
         "properties": {
@@ -194,6 +197,10 @@ async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
             },
             "description": {"type": "string", "description": "Optional notes or details"},
             "location": {"type": "string", "description": "Optional location"},
+            "calendar": {
+                "type": "string",
+                "description": "Calendar name or ID to add the event to. Omit for default.",
+            },
         },
         "required": ["summary", "start", "end"],
     },
@@ -206,6 +213,7 @@ async def create_calendar_event(args: dict[str, Any]) -> dict[str, Any]:
         end=args["end"],
         description=args.get("description", ""),
         location=args.get("location", ""),
+        calendar_name=args.get("calendar"),
     )
     _state["urls"].append(link)
     return {"content": [{"type": "text", "text": f"Event created. Calendar link: {link}"}]}

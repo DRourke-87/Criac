@@ -64,6 +64,23 @@ def list_calendar_ids() -> list[str]:
     return [c["id"] for c in result.get("items", [])]
 
 
+def list_calendars() -> list[dict]:
+    """Return all calendars as {id, name} dicts."""
+    result = _get_service().calendarList().list().execute()
+    return [{"id": c["id"], "name": c.get("summary", c["id"])} for c in result.get("items", [])]
+
+
+def resolve_calendar_id(name: str) -> str:
+    """Resolve a calendar name to its ID. Falls back to the name itself if no match."""
+    if not name:
+        return os.environ.get("GOOGLE_WRITE_CALENDAR_ID", "primary")
+    name_lower = name.lower().strip()
+    for cal in list_calendars():
+        if name_lower in cal["name"].lower():
+            return cal["id"]
+    return name  # assume it's already an ID
+
+
 def _resolve_calendar_ids() -> list[str]:
     """Return the calendars to query: env-configured list, or all of them."""
     configured = os.environ.get("GOOGLE_CALENDAR_ID", "").strip()
@@ -116,11 +133,14 @@ def create_event(
     description: str = "",
     location: str = "",
     calendar_id: str | None = None,
+    calendar_name: str | None = None,
 ) -> str:
     """Create an event. start/end are ISO 8601 date ('2026-06-10') or datetime
     ('2026-06-10T15:00:00'). Returns the event's HTML link."""
     tz_name = os.environ.get("TIMEZONE", "Europe/London")
-    if calendar_id is None:
+    if calendar_name:
+        calendar_id = resolve_calendar_id(calendar_name)
+    elif calendar_id is None:
         calendar_id = os.environ.get("GOOGLE_WRITE_CALENDAR_ID", "primary")
 
     def _slot(val: str) -> dict:
