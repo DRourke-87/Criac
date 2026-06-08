@@ -90,12 +90,16 @@ if ! $INSTANCE_ONLY; then
     --wait-for-state AVAILABLE > /dev/null
   ok "route table updated"
 
-  log "Creating Security List (SSH in, all out)"
+  log "Creating Security List (SSH + HTTPS in, all out)"
   SL_ID=$(oci network security-list create \
     --compartment-id "$COMPARTMENT" \
     --vcn-id "$VCN_ID" \
     --display-name "${NAME}-sl" \
-    --ingress-security-rules '[{"source":"0.0.0.0/0","protocol":"6","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":22,"max":22}}}]' \
+    --ingress-security-rules '[
+      {"source":"0.0.0.0/0","protocol":"6","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":22,"max":22}}},
+      {"source":"0.0.0.0/0","protocol":"6","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":80,"max":80}}},
+      {"source":"0.0.0.0/0","protocol":"6","isStateless":false,"tcpOptions":{"destinationPortRange":{"min":443,"max":443}}}
+    ]' \
     --egress-security-rules  '[{"destination":"0.0.0.0/0","protocol":"all","isStateless":false}]' \
     --wait-for-state AVAILABLE \
     --query 'data.id' --raw-output 2>/dev/null)
@@ -113,7 +117,7 @@ if ! $INSTANCE_ONLY; then
     --query 'data.id' --raw-output 2>/dev/null)
   ok "$SUBNET_ID"
 
-  printf "VCN_ID=%s\nSUBNET_ID=%s\n" "$VCN_ID" "$SUBNET_ID" > ~/.criacbot_ids
+  printf "VCN_ID=%s\nSUBNET_ID=%s\nSL_ID=%s\n" "$VCN_ID" "$SUBNET_ID" "$SL_ID" > ~/.criacbot_ids
   info "Networking IDs saved to ~/.criacbot_ids"
 
 else
