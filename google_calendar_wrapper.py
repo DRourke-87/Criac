@@ -148,6 +148,12 @@ def create_event(
             return {"dateTime": val, "timeZone": tz_name}
         return {"date": val}
 
+    # Google Calendar all-day event end dates are exclusive (day after last day).
+    # If start and end are the same date, bump end forward by one day.
+    if "T" not in start and "T" not in end and start >= end:
+        end_date = datetime.date.fromisoformat(start) + datetime.timedelta(days=1)
+        end = end_date.isoformat()
+
     body = {
         "summary": summary,
         "description": description,
