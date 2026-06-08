@@ -1,27 +1,43 @@
 {
   "interactionModel": {
     "languageModel": {
-      "invocationName": "criac",
+      "invocationName": "apex",
       "intents": [
         {
           "name": "ActionIntent",
           "slots": [
             {
               "name": "query",
-              "type": "AMAZON.SearchQuery"
+              "type": "FREEFORM"
             }
           ],
           "samples": [
-            "tell criac to {query}",
-            "ask criac to {query}",
-            "criac {query}",
+            "{query}",
+            "tell apex to {query}",
+            "ask apex to {query}",
+            "apex {query}",
             "to {query}"
           ]
         },
         { "name": "AMAZON.CancelIntent", "samples": [] },
         { "name": "AMAZON.HelpIntent", "samples": [] },
         { "name": "AMAZON.StopIntent", "samples": [] },
-        { "name": "AMAZON.FallbackIntent", "samples": [] }
+        { "name": "AMAZON.FallbackIntent", "samples": [] },
+        { "name": "AMAZON.NavigateHomeIntent", "samples": [] }
+      ],
+      "types": [
+        {
+          "name": "FREEFORM",
+          "values": [
+            {"name": {"value": "remind me to call the supplier tomorrow"}},
+            {"name": {"value": "create a task to review the proposal"}},
+            {"name": {"value": "write a LinkedIn post about AI in defence"}},
+            {"name": {"value": "save a note about the client meeting"}},
+            {"name": {"value": "search for government procurement news"}},
+            {"name": {"value": "add a calendar event for next Monday"}},
+            {"name": {"value": "what have I got on this week"}}
+          ]
+        }
       ]
     }
   }
