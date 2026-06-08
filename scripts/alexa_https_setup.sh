@@ -55,10 +55,12 @@ sudo apt-get install -y -q nginx certbot python3-certbot-nginx
 
 echo "==> Installing Dynu renewal cron (every 5 minutes)"
 CRON_CMD="*/5 * * * * curl -s 'https://api.dynu.com/nic/update?hostname=${DOMAIN}&password=${PASS_MD5}&myip=' > /dev/null"
-(crontab -l 2>/dev/null | grep -v dynu || true; echo "$CRON_CMD") | crontab -
+EXISTING_CRON=$(crontab -l 2>/dev/null || true)
+FILTERED_CRON=$(echo "$EXISTING_CRON" | grep -v dynu || true)
+(echo "$FILTERED_CRON"; echo "$CRON_CMD") | crontab -
 
 # Force an immediate update so the DNS record is current before certbot runs.
-curl -s "https://api.dynu.com/nic/update?hostname=${DOMAIN}&password=${PASS_MD5}&myip=" > /dev/null
+curl -s "https://api.dynu.com/nic/update?hostname=${DOMAIN}&password=${PASS_MD5}&myip=" > /dev/null || true
 echo "    DNS updated"
 
 # ── nginx reverse-proxy config ────────────────────────────────────────────────
