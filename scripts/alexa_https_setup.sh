@@ -7,26 +7,27 @@
 #      OCI Console → Networking → VCNs → criacbot-vcn → Security Lists → criacbot-sl
 #      Add two TCP ingress rules: port 80 and port 443, source 0.0.0.0/0
 #
-#   2. Create a free DuckDNS subdomain:
-#      - Go to https://www.duckdns.org and sign in with Google/GitHub
-#      - Create a subdomain (e.g. "mycriac")
+#   2. Create a free Dynu subdomain:
+#      - Go to https://www.dynu.com and sign in
+#      - Add a DDNS hostname (e.g. criacbot.ddnsgeek.com)
 #      - Set the IP to your VM's public IP
-#      - Copy your token from the top of the page
+#      - Note your Dynu password
 #
 #   3. Run this script on the VM:
-#      DUCKDNS_TOKEN=your-token DUCKDNS_SUBDOMAIN=mycriac bash scripts/alexa_https_setup.sh
+#      DYNU_HOSTNAME=criacbot.ddnsgeek.com DYNU_PASSWORD=yourpassword bash scripts/alexa_https_setup.sh
 #
 set -euo pipefail
 
-if [ -z "${DUCKDNS_TOKEN:-}" ] || [ -z "${DUCKDNS_SUBDOMAIN:-}" ]; then
+if [ -z "${DYNU_HOSTNAME:-}" ] || [ -z "${DYNU_PASSWORD:-}" ]; then
   echo ""
-  echo "Usage: DUCKDNS_TOKEN=<token> DUCKDNS_SUBDOMAIN=<subdomain> bash $0"
+  echo "Usage: DYNU_HOSTNAME=<hostname> DYNU_PASSWORD=<password> bash $0"
   echo ""
   echo "See the comments at the top of this file for setup steps."
   exit 1
 fi
 
-DOMAIN="${DUCKDNS_SUBDOMAIN}.duckdns.org"
+DOMAIN="${DYNU_HOSTNAME}"
+PASS_MD5=$(echo -n "${DYNU_PASSWORD}" | md5sum | awk '{print $1}')
 echo "==> Setting up HTTPS for ${DOMAIN}"
 
 # ── open ports in the VM's OS firewall ────────────────────────────────────────
@@ -49,15 +50,15 @@ echo "==> Installing nginx and certbot"
 sudo apt-get update -q
 sudo apt-get install -y -q nginx certbot python3-certbot-nginx
 
-# ── DuckDNS IP renewal cron ───────────────────────────────────────────────────
-# Keeps the DuckDNS record pointing at this VM's IP even if it changes.
+# ── Dynu IP renewal cron ──────────────────────────────────────────────────────
+# Keeps the Dynu record pointing at this VM's IP even if it changes.
 
-echo "==> Installing DuckDNS renewal cron (every 5 minutes)"
-CRON_CMD="*/5 * * * * curl -s 'https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip=' > /dev/null"
-(crontab -l 2>/dev/null | grep -v duckdns; echo "$CRON_CMD") | crontab -
+echo "==> Installing Dynu renewal cron (every 5 minutes)"
+CRON_CMD="*/5 * * * * curl -s 'https://api.dynu.com/nic/update?hostname=${DOMAIN}&password=${PASS_MD5}&myip=' > /dev/null"
+(crontab -l 2>/dev/null | grep -v dynu; echo "$CRON_CMD") | crontab -
 
 # Force an immediate update so the DNS record is current before certbot runs.
-curl -s "https://www.duckdns.org/update?domains=${DUCKDNS_SUBDOMAIN}&token=${DUCKDNS_TOKEN}&ip=" > /dev/null
+curl -s "https://api.dynu.com/nic/update?hostname=${DOMAIN}&password=${PASS_MD5}&myip=" > /dev/null
 echo "    DNS updated"
 
 # ── nginx reverse-proxy config ────────────────────────────────────────────────
@@ -87,7 +88,7 @@ sudo systemctl reload nginx
 echo "==> Obtaining Let's Encrypt certificate for ${DOMAIN}"
 sudo certbot --nginx -d "${DOMAIN}" \
   --non-interactive --agree-tos \
-  -m "admin@${DOMAIN}" \
+  -m "dazrour@gmail.com" \
   --redirect
 
 echo ""
