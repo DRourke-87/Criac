@@ -163,6 +163,19 @@ async def search_notion(args: dict[str, Any]) -> dict[str, Any]:
         "required": [],
     },
 )
+def _format_event_start(start: str) -> str:
+    """Format an ISO date/datetime string with a Python-computed day name."""
+    if "T" in start:
+        dt = datetime.datetime.fromisoformat(start)
+        if dt.minute:
+            time_str = dt.strftime("%-I:%M%p").lower()
+        else:
+            time_str = dt.strftime("%-I%p").lower()
+        return dt.strftime(f"%a %-d %b, {time_str}")
+    else:
+        return datetime.date.fromisoformat(start).strftime("%a %-d %b")
+
+
 async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
     _state["used"] = True
     days = min(int(args.get("days_ahead", 7)), 180)
@@ -170,7 +183,11 @@ async def get_upcoming_events(args: dict[str, Any]) -> dict[str, Any]:
     if not events:
         text = "No events found in that window."
     else:
-        lines = [f"- {e['start']}: {e['title']}" + (f" @ {e['location']}" if e['location'] else "") for e in events]
+        lines = [
+            f"- {_format_event_start(e['start'])}: {e['title']}"
+            + (f" @ {e['location']}" if e['location'] else "")
+            for e in events
+        ]
         text = "\n".join(lines)
     return {"content": [{"type": "text", "text": text}]}
 
