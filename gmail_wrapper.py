@@ -112,6 +112,21 @@ def _extract_body(payload: dict) -> str:
     return _strip_html(html) if html else ""
 
 
+def _fetch_email(service, msg_id: str) -> dict:
+    msg = service.users().messages().get(userId="me", id=msg_id, format="full").execute()
+    payload = msg.get("payload", {})
+    headers = payload.get("headers", [])
+    body = _extract_body(payload).strip()
+    return {
+        "id": msg_id,
+        "from": _header(headers, "From"),
+        "subject": _header(headers, "Subject") or "(no subject)",
+        "date": _header(headers, "Date"),
+        "snippet": msg.get("snippet", ""),
+        "body": body[:4000] if body else msg.get("snippet", ""),
+    }
+
+
 def get_new_emails(max_results: int = 50) -> list[dict]:
     """Return new emails from allowed senders since the last check.
 
@@ -141,29 +156,34 @@ def get_new_emails(max_results: int = 50) -> list[dict]:
     if not new_ids:
         return []
 
-    emails = []
-    for msg_id in new_ids:
-        msg = (
-            service.users()
-            .messages()
-            .get(userId="me", id=msg_id, format="full")
-            .execute()
-        )
-        payload = msg.get("payload", {})
-        headers = payload.get("headers", [])
-        body = _extract_body(payload).strip()
-        emails.append({
-            "id": msg_id,
-            "from": _header(headers, "From"),
-            "subject": _header(headers, "Subject") or "(no subject)",
-            "snippet": msg.get("snippet", ""),
-            "body": body[:4000] if body else msg.get("snippet", ""),
-        })
+    emails = [_fetch_email(service, msg_id) for msg_id in new_ids]
 
     seen.update(ids)
     _save_seen(seen)
     emails.reverse()  # oldest-new-first, so notifications arrive in order
     return emails
+
+
+def get_recent_emails(max_results: int = 5) -> list[dict]:
+    """Return the most recent emails from allowed senders, newest first.
+
+    On-demand summary query — independent of the new-mail/seen tracking
+    used by get_new_emails, so it doesn't affect background polling state.
+    """
+    senders = _allowed_senders()
+    if not senders:
+        return []
+
+    service = _get_service()
+    query = _build_query(senders)
+    result = (
+        service.users()
+        .messages()
+        .list(userId="me", q=query, maxResults=max_results)
+        .execute()
+    )
+    ids = [m["id"] for m in result.get("messages", [])]
+    return [_fetch_email(service, msg_id) for msg_id in ids]
 
 
 if __name__ == "__main__":

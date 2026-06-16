@@ -35,6 +35,7 @@ import google_calendar_wrapper as gcal
 import pptx_wrapper as pptx
 import memory_wrapper as memory
 import brave_search
+import gmail_wrapper as gmail
 
 _SYSTEM_PROMPT = (Path(__file__).parent / "prompts" / "system.md").read_text(encoding="utf-8")
 
@@ -420,6 +421,35 @@ async def web_search(args: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Results:\n{summary}"}]}
 
 
+@tool(
+    "get_recent_school_emails",
+    "Fetch the most recent emails from the school's email address so you can "
+    "summarise them. Use when the user asks to summarise, recap, check, or catch "
+    "up on recent emails from school.",
+    {
+        "type": "object",
+        "properties": {
+            "count": {
+                "type": "integer",
+                "description": "How many recent emails to fetch (default 5, max 20)",
+            },
+        },
+        "required": [],
+    },
+)
+async def get_recent_school_emails(args: dict[str, Any]) -> dict[str, Any]:
+    _state["used"] = True
+    count = min(int(args.get("count", 5)), 20)
+    emails = await asyncio.to_thread(gmail.get_recent_emails, count)
+    if not emails:
+        return {"content": [{"type": "text", "text": "No emails found from the school."}]}
+    blocks = [
+        f"From: {e['from']}\nDate: {e['date']}\nSubject: {e['subject']}\n\n{e['body']}"
+        for e in emails
+    ]
+    return {"content": [{"type": "text", "text": "\n\n---\n\n".join(blocks)}]}
+
+
 _server = create_sdk_mcp_server(
     name="notion",
     version="1.0.0",
@@ -427,6 +457,7 @@ _server = create_sdk_mcp_server(
         create_note, create_task, create_draft, search_notion,
         get_upcoming_events, create_calendar_event, create_presentation,
         save_memory, recall_memory, forget_memory, web_search,
+        get_recent_school_emails,
     ],
 )
 
@@ -442,6 +473,7 @@ _ALLOWED_TOOLS = [
     "mcp__notion__recall_memory",
     "mcp__notion__forget_memory",
     "mcp__notion__web_search",
+    "mcp__notion__get_recent_school_emails",
 ]
 
 # Belt-and-braces: keep Claude off the host filesystem and shell.
