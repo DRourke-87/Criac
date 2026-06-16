@@ -76,3 +76,8 @@ BRAVE_API_KEY = os.environ.get("BRAVE_API_KEY", "")
 # Alexa — optional. Set ALEXA_SKILL_ID to validate incoming requests match your skill.
 ALEXA_SKILL_ID = os.environ.get("ALEXA_SKILL_ID", "")
 
+# Gmail — optional. Set GMAIL_ALLOWED_SENDERS to enable background polling for
+# new mail from those addresses only (comma-separated, hard allowlist).
+GMAIL_ALLOWED_SENDERS = os.environ.get("GMAIL_ALLOWED_SENDERS", "")
+GMAIL_POLL_INTERVAL_SECONDS = int(os.environ.get("GMAIL_POLL_INTERVAL_SECONDS", "300"))
+
