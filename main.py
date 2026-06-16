@@ -8,6 +8,7 @@ import logging
 import signal
 import threading
 
+import agent
 import bot
 import config
 import alexa_handler
@@ -17,17 +18,29 @@ logger = logging.getLogger(__name__)
 
 
 async def _gmail_poll_loop(bot_instance, chat_id: int) -> None:
-    """Poll Gmail for new mail from allowed senders and push it to Telegram."""
+    """Poll Gmail for new mail from allowed senders, let the agent extract any
+    events/reminders into the calendar or tasks, and report the outcome."""
     while True:
         try:
             emails = await asyncio.to_thread(gmail_wrapper.get_new_emails)
             for email in emails:
+                prompt = (
+                    f"You've received a school email from {email['from']}.\n"
+                    f"Subject: {email['subject']}\n\n"
+                    f"{email['body']}\n\n"
+                    "Look for any events, deadlines, or reminders in this email "
+                    "and add each one to the family calendar or create a task as "
+                    "appropriate. If there's nothing actionable, just say so briefly."
+                )
+                try:
+                    result = await agent.run(prompt, source="gmail")
+                    reply = result["reply"]
+                except Exception:
+                    logger.exception("Agent failed processing school email")
+                    reply = "⚠️ Couldn't process this email automatically — check it manually."
                 await bot_instance.send_message(
                     chat_id=chat_id,
-                    text=(
-                        f"📧 New email from {email['from']}\n"
-                        f"Subject: {email['subject']}\n\n{email['snippet']}"
-                    ),
+                    text=f"📧 Email from {email['from']} — \"{email['subject']}\"\n{reply}",
                 )
         except Exception:
             logger.exception("Gmail poll failed")

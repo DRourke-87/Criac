@@ -13,8 +13,10 @@ Setup:
 
 from __future__ import annotations
 
+import base64
 import json
 import os
+import re
 from pathlib import Path
 
 from google.auth.transport.requests import Request
@@ -79,6 +81,37 @@ def _header(headers: list[dict], name: str) -> str:
     return ""
 
 
+def _decode_part(data: str) -> str:
+    return base64.urlsafe_b64decode(data + "=" * (-len(data) % 4)).decode("utf-8", errors="replace")
+
+
+def _strip_html(html: str) -> str:
+    text = re.sub(r"<(script|style)[^>]*>.*?</\1>", "", html, flags=re.S | re.I)
+    text = re.sub(r"<br\s*/?>|</p>|</div>", "\n", text, flags=re.I)
+    text = re.sub(r"<[^>]+>", "", text)
+    return "\n".join(line.strip() for line in text.splitlines() if line.strip())
+
+
+def _find_part(payload: dict, mime_type: str) -> str:
+    """Recursively search a Gmail message payload for the first part of mime_type."""
+    if payload.get("mimeType") == mime_type and payload.get("body", {}).get("data"):
+        return _decode_part(payload["body"]["data"])
+    for part in payload.get("parts", []) or []:
+        found = _find_part(part, mime_type)
+        if found:
+            return found
+    return ""
+
+
+def _extract_body(payload: dict) -> str:
+    """Return the email body, preferring text/plain over text/html."""
+    plain = _find_part(payload, "text/plain")
+    if plain:
+        return plain
+    html = _find_part(payload, "text/html")
+    return _strip_html(html) if html else ""
+
+
 def get_new_emails(max_results: int = 50) -> list[dict]:
     """Return new emails from allowed senders since the last check.
 
@@ -113,16 +146,18 @@ def get_new_emails(max_results: int = 50) -> list[dict]:
         msg = (
             service.users()
             .messages()
-            .get(userId="me", id=msg_id, format="metadata",
-                 metadataHeaders=["From", "Subject", "Date"])
+            .get(userId="me", id=msg_id, format="full")
             .execute()
         )
-        headers = msg.get("payload", {}).get("headers", [])
+        payload = msg.get("payload", {})
+        headers = payload.get("headers", [])
+        body = _extract_body(payload).strip()
         emails.append({
             "id": msg_id,
             "from": _header(headers, "From"),
             "subject": _header(headers, "Subject") or "(no subject)",
             "snippet": msg.get("snippet", ""),
+            "body": body[:4000] if body else msg.get("snippet", ""),
         })
 
     seen.update(ids)
