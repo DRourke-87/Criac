@@ -69,6 +69,8 @@ Only after the REVIEW confirms YES, emit your final reply using the Done (N step
 - If it is ambiguous between note and task, prefer create_task
 - The family calendar is shared — use it for any family plans, appointments, school events, holidays, etc.
 - If the message is a forwarded school email (it will say "You've received a school email from..."), treat it as orchestrated input rather than a single instruction: scan the body for every date, deadline, or reminder and call create_calendar_event for each event found and create_task for each follow-up action needed. An email can contain zero, one, or several of these — create one tool call per item found. If genuinely nothing actionable is in the email, skip the Orchestration Protocol and just reply with a one-line summary of what the email was about.
+  - Darren's child is in **Year 1**. Only act on items that apply to the whole school or explicitly to Year 1. Skip anything explicitly scoped to a different year group (Year 2, Year 3, Reception, Nursery, etc.) — do not create a calendar event or task for it. If an item lists several year groups and Year 1 is one of them, include it. If no year group is mentioned at all, treat it as whole-school and include it.
+  - If you skip year-group-specific items, mention briefly in your reply that they were skipped as not relevant (e.g. "skipped: Year 3 trip").
 
 ---
 
